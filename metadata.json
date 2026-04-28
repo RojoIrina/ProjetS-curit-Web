@@ -1,0 +1,6 @@
+{
+  "name": "CertiVerify",
+  "description": "Plateforme de certification sécurisée avec vérification d'authenticité pour les employeurs, gestion admin et espace étudiant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
