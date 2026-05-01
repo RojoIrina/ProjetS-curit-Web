@@ -18,6 +18,7 @@
 4. [Guide de Déploiement Sécurisé](#4-guide-de-déploiement-sécurisé)
 5. [Design System — "Trust & Security"](#5-design-system--trust--security)
 6. [Roadmap de Développement](#6-roadmap-de-développement)
+7. [🚀 Quick Start — Lancement du Site](#7--quick-start--lancement-du-site)
 
 ---
 
@@ -826,6 +827,113 @@ app.use(express.json({ limit: '1mb' }));
 │        instantanément avec horodatage et raison.             │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 7. 🚀 Quick Start — Lancement du Site
+
+### 7.1 Prérequis
+
+| Outil | Version minimale | Vérification |
+|---|---|---|
+| **Node.js** | 18+ | `node -v` |
+| **npm** | 9+ | `npm -v` |
+| **PostgreSQL** | 14+ | `psql --version` |
+| **OpenSSL** | 1.1+ | `openssl version` |
+
+### 7.2 Installation & Configuration
+
+**1. Cloner le dépôt et installer les dépendances :**
+
+```bash
+git clone <repo-url> && cd ProjetSecuriteWeb-CertyVerify
+make install
+# ou manuellement :
+# npm install
+# npm --prefix server install
+```
+
+**2. Créer la base de données PostgreSQL :**
+
+```bash
+psql -U postgres -c "CREATE DATABASE certiverify_db;"
+```
+
+**3. Configurer les variables d'environnement du serveur :**
+
+```bash
+# Créer le fichier server/.env avec le contenu suivant :
+cat > server/.env << 'EOF'
+DATABASE_URL="postgresql://postgres:VOTRE_MOT_DE_PASSE@localhost:5432/certiverify_db"
+JWT_ACCESS_EXPIRY="15m"
+JWT_REFRESH_EXPIRY="7d"
+QR_HMAC_SECRET="changez-moi-avec-une-valeur-aleatoire-256-bits"
+BCRYPT_ROUNDS=12
+CORS_ORIGIN="http://localhost:3000"
+PORT=3001
+NODE_ENV="development"
+EOF
+```
+
+> ⚠️ **Remplacez `VOTRE_MOT_DE_PASSE`** par le mot de passe de votre utilisateur PostgreSQL.
+
+**4. Lancer le setup complet (clés RSA + Prisma + seed) :**
+
+```bash
+make setup
+# ou manuellement :
+# bash setup-server.sh
+```
+
+Ce script effectue automatiquement :
+- Installation des dépendances serveur
+- Génération d'une paire de clés RSA-2048 (JWT) dans `server/keys/`
+- Génération du client Prisma
+- Push du schéma vers PostgreSQL
+- Seed de la base avec les données initiales
+
+### 7.3 Lancement
+
+**Démarrer le frontend + backend en une seule commande :**
+
+```bash
+make dev
+```
+
+**Ou séparément dans deux terminaux :**
+
+```bash
+# Terminal 1 — Backend (port 3001)
+make server-dev
+
+# Terminal 2 — Frontend (port 3000)
+make client-dev
+```
+
+### 7.4 Accès
+
+| Service | URL |
+|---|---|
+| **Frontend** | [http://localhost:3000](http://localhost:3000) |
+| **API Backend** | [http://localhost:3001/api](http://localhost:3001/api) |
+
+**Identifiants de test :**
+
+| Rôle | Email | Mot de passe |
+|---|---|---|
+| Admin | `admin@certiverify.com` | `admin123` |
+| Étudiant | `jean@student.com` | `student123` |
+
+### 7.5 Commandes Utiles (Makefile)
+
+```bash
+make help          # Afficher toutes les commandes disponibles
+make build         # Build frontend + server
+make lint          # Vérification TypeScript
+make db-studio     # Ouvrir Prisma Studio (UI de la DB)
+make db-seed       # Re-seeder la base de données
+make clean         # Supprimer les builds
 ```
 
 ---
