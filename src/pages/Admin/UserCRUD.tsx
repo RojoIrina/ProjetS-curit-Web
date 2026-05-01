@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { useStore } from '../../hooks/useStore';
-import { User as UserType } from '../../types';
 import { Link, Navigate } from 'react-router-dom';
 import { Plus, Trash2, Edit2, Shield, User as UserIcon, X, Search, ChevronLeft, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function UserCRUD() {
-  const { users, setUsers, currentUser } = useStore();
+  const { users, addUser, removeUser, currentUser, modules } = useStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '', role: 'student' as const });
+  const [formData, setFormData] = useState({ fullName: '', email: '', role: 'student' as const });
   const [search, setSearch] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -18,39 +17,37 @@ export default function UserCRUD() {
 
   const showFeedback = (msg: string) => {
     setFeedback(msg);
-    // Stay longer if it's a password message
     const duration = msg.includes('Pass temp') ? 10000 : 3000;
     setTimeout(() => setFeedback(null), duration);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Supprimer cet utilisateur ?')) {
-      setUsers(prev => prev.filter(u => u.id !== id));
+      await removeUser(id);
       showFeedback('Utilisateur supprimé');
     }
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const tempPassword = Math.random().toString(36).substr(2, 8);
-    const newUser: UserType = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: formData.name,
+    const result = await addUser({
+      fullName: formData.fullName,
       email: formData.email,
-      password: tempPassword,
       role: formData.role,
-      completedModules: []
-    };
-    setUsers(prev => [...prev, newUser]);
-    setIsModalOpen(false);
-    setFormData({ name: '', email: '', role: 'student' });
-    showFeedback(`Utilisateur créé ! Pass temp: ${tempPassword}`);
+    });
+    if (result) {
+      setIsModalOpen(false);
+      setFormData({ fullName: '', email: '', role: 'student' });
+      showFeedback(`Utilisateur créé ! Pass temp: ${result.temporaryPassword}`);
+    }
   };
 
   const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(search.toLowerCase()) || 
+    u.fullName.toLowerCase().includes(search.toLowerCase()) || 
     u.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalModules = modules.length || 3;
 
   return (
     <div className="space-y-8">
@@ -125,7 +122,7 @@ export default function UserCRUD() {
                     <div className={`p-2 rounded-xl ${user.role === 'admin' ? 'bg-indigo-50 text-indigo-600' : 'bg-orange-50 text-orange-600'}`}>
                       {user.role === 'admin' ? <Shield className="w-4 h-4" /> : <UserIcon className="w-4 h-4" />}
                     </div>
-                    <span className="font-bold">{user.name}</span>
+                    <span className="font-bold">{user.fullName}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4">
@@ -139,10 +136,10 @@ export default function UserCRUD() {
                     <div className="h-1.5 w-16 bg-gray-100 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-emerald-500" 
-                        style={{ width: `${(user.completedModules.length / 3) * 100}%` }}
+                        style={{ width: `${((user.completedModules?.length || 0) / totalModules) * 100}%` }}
                       />
                     </div>
-                    <span className="text-xs font-bold text-gray-400">{user.completedModules.length}/3</span>
+                    <span className="text-xs font-bold text-gray-400">{user.completedModules?.length || 0}/{totalModules}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
@@ -192,8 +189,8 @@ export default function UserCRUD() {
                   <label className="text-xs font-bold uppercase tracking-widest text-gray-400">Nom Complet</label>
                   <input
                     type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    value={formData.fullName}
+                    onChange={(e) => setFormData({...formData, fullName: e.target.value})}
                     className="w-full px-5 py-3 bg-[#F9F9F9] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="ex: Jean Dupont"
                     required

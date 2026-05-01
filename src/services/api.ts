@@ -196,6 +196,21 @@ export async function deleteModuleApi(id: string) {
   return apiFetch<any>(`/modules/${id}`, { method: 'DELETE' });
 }
 
+export async function enrollModuleApi(moduleId: string) {
+  return apiFetch<any>(`/modules/${moduleId}/enroll`, { method: 'POST' });
+}
+
+export async function completeModuleApi(moduleId: string, userId?: string) {
+  return apiFetch<any>(`/modules/${moduleId}/complete`, {
+    method: 'POST',
+    body: JSON.stringify(userId ? { userId } : {}),
+  });
+}
+
+export async function getProgressApi() {
+  return apiFetch<any[]>('/modules/progress');
+}
+
 // ─── Certificates API ───
 
 export async function listCertificatesApi(filters?: { studentId?: string }) {
@@ -223,6 +238,11 @@ export async function revokeCertificateApi(id: string, reason: string) {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+}
+
+export async function downloadCertificateApi(uid: string, accessKey: string) {
+  const res = await fetch(`${API_BASE}/certificates/${uid}/download?key=${accessKey}`);
+  return (await res.json()) as ApiResponse<any>;
 }
 
 // ─── Public Verification API (no auth) ───

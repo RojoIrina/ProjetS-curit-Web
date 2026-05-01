@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useStore } from '../../hooks/useStore';
-import { Module } from '../../types';
 import { Link, Navigate } from 'react-router-dom';
 import { Plus, Trash2, Edit2, BookOpen, X, Search, ChevronLeft, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function ModuleCRUD() {
-  const { modules, setModules, currentUser } = useStore();
+  const { modules, addModule, removeModule, currentUser } = useStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ title: '', description: '' });
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -20,24 +19,24 @@ export default function ModuleCRUD() {
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Supprimer ce module ?')) {
-      setModules(prev => prev.filter(m => m.id !== id));
+      await removeModule(id);
       showFeedback('Module supprimé');
     }
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newModule: Module = {
-      id: Math.random().toString(36).substr(2, 9),
+    const result = await addModule({
       title: formData.title,
-      description: formData.description
-    };
-    setModules(prev => [...prev, newModule]);
-    setIsModalOpen(false);
-    setFormData({ title: '', description: '' });
-    showFeedback('Module ajouté au catalogue');
+      description: formData.description,
+    });
+    if (result) {
+      setIsModalOpen(false);
+      setFormData({ title: '', description: '' });
+      showFeedback('Module ajouté au catalogue');
+    }
   };
 
   return (
@@ -107,6 +106,9 @@ export default function ModuleCRUD() {
                 <h3 className="text-xl font-bold">{module.title}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed">{module.description}</p>
               </div>
+              {module.creditHours > 0 && (
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{module.creditHours}h de formation</p>
+              )}
             </motion.div>
           ))}
         </AnimatePresence>

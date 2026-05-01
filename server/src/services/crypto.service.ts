@@ -198,3 +198,46 @@ export function verifyQRSignature(uid: string, sig: string): boolean {
     return false;
   }
 }
+
+/**
+ * Generate a unique access key for a student's certificate.
+ *
+ * This is the "student secret" — a unique key derived from the certificate
+ * UID and student ID using HMAC-SHA256. The student receives this key
+ * exactly once when their certificate is issued.
+ *
+ * To download/unlock their certificate, they must provide this access key.
+ * This ensures that even if the certificate UID is public, only the student
+ * (who knows the access key) can access the full PDF.
+ *
+ * The key is 16 hex characters (64 bits of entropy) — sufficient for
+ * this use case since the endpoint is rate-limited.
+ */
+export function generateAccessKey(certificateUid: string, studentId: string): string {
+  return crypto
+    .createHmac('sha256', env.QR_HMAC_SECRET)
+    .update(`${certificateUid}:${studentId}:access`)
+    .digest('hex')
+    .substring(0, 16);
+}
+
+/**
+ * Verify an access key against a certificate + student pair.
+ * Uses timing-safe comparison.
+ */
+export function verifyAccessKey(
+  certificateUid: string,
+  studentId: string,
+  providedKey: string
+): boolean {
+  try {
+    const expected = generateAccessKey(certificateUid, studentId);
+    if (providedKey.length !== expected.length) return false;
+    return crypto.timingSafeEqual(
+      Buffer.from(providedKey, 'utf8'),
+      Buffer.from(expected, 'utf8')
+    );
+  } catch {
+    return false;
+  }
+}

@@ -18,18 +18,17 @@ export default function CertificateView() {
     return <Navigate to="/" />;
   }
 
-  const shareUrl = `${window.location.origin}/?verify=${certificate.id}`;
+  // Build the verification URL using the certificateUid
+  const verifyUrl = `${window.location.origin}/?verify=${certificate.certificateUid}`;
+
+  // QR code value includes the HMAC sig if available
+  const qrValue = certificate.qrPayload || verifyUrl;
 
   const showFeedback = (msg: string) => {
     setFeedback(msg);
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  /**
-   * CORE FEATURE: PDF GENERATION
-   * Converts the HTML certificate into a high-quality PDF using canvas rendering.
-   * We use scale: 2 for high density and fixed dimensions for the PDF.
-   */
   const downloadPDF = async () => {
     if (!certificateRef.current) return;
     
@@ -37,7 +36,7 @@ export default function CertificateView() {
     
     try {
       const canvas = await html2canvas(certificateRef.current, {
-        scale: 2, // 2 is usually safer for memory
+        scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
@@ -51,12 +50,31 @@ export default function CertificateView() {
       });
       
       pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width / 2, canvas.height / 2);
-      pdf.save(`certificat-${certificate.studentName.replace(/\s+/g, '-')}-${certificate.id}.pdf`);
+      pdf.save(`certificat-${certificate.studentName.replace(/\s+/g, '-')}-${certificate.certificateUid}.pdf`);
       showFeedback('PDF Téléchargé !');
     } catch (error) {
       console.error('PDF Export failed:', error);
       showFeedback('Erreur lors de l\'export PDF');
     }
+  };
+
+  // Format date properly
+  const formattedDate = certificate.issuedAt
+    ? new Date(certificate.issuedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+    : 'N/A';
+
+  // Status badge
+  const statusColors: Record<string, string> = {
+    signed: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    delivered: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    revoked: 'bg-rose-50 text-rose-700 border-rose-200',
+    draft: 'bg-amber-50 text-amber-700 border-amber-200',
+  };
+  const statusLabels: Record<string, string> = {
+    signed: 'Signé',
+    delivered: 'Délivré',
+    revoked: 'Révoqué',
+    draft: 'Brouillon',
   };
 
   return (
@@ -74,10 +92,18 @@ export default function CertificateView() {
           </motion.div>
         )}
       </AnimatePresence>
-      <Link to="/student" className="inline-flex items-center gap-2 text-sm font-bold text-[#94a3b8] hover:text-[#4f46e5] transition-colors uppercase tracking-widest">
-        <ArrowLeft className="w-4 h-4" />
-        Retour au dashboard
-      </Link>
+
+      <div className="flex items-center justify-between">
+        <Link to="/student" className="inline-flex items-center gap-2 text-sm font-bold text-[#94a3b8] hover:text-[#4f46e5] transition-colors uppercase tracking-widest">
+          <ArrowLeft className="w-4 h-4" />
+          Retour au dashboard
+        </Link>
+        {certificate.status && (
+          <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${statusColors[certificate.status] || statusColors.signed}`}>
+            {statusLabels[certificate.status] || certificate.status}
+          </span>
+        )}
+      </div>
 
       <div ref={certificateRef} className="bg-white">
         <motion.div 
@@ -114,23 +140,23 @@ export default function CertificateView() {
 
             <p className="max-w-lg text-lg text-[#475569] leading-relaxed font-serif italic">
               A validé l'intégralité du cursus et a démontré une maîtrise exceptionnelle des compétences requises pour la formation <br />
-              <span className="not-italic font-bold text-[#0f172a] uppercase text-sm tracking-[0.2em] block mt-6 bg-[#f8fafc] py-3 rounded-lg border border-[#f1f5f9]">Architecture & Sécurité des Systèmes Numériques</span>
+              <span className="not-italic font-bold text-[#0f172a] uppercase text-sm tracking-[0.2em] block mt-6 bg-[#f8fafc] py-3 rounded-lg border border-[#f1f5f9]">{certificate.title}</span>
             </p>
 
             <div className="flex justify-between w-full pt-16 items-end">
               <div className="space-y-6 text-left">
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#94a3b8]">Date d'émission</p>
-                  <p className="font-bold text-[#1e293b]">{certificate.issueDate}</p>
+                  <p className="font-bold text-[#1e293b]">{formattedDate}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#94a3b8]">Identifiant Unique</p>
-                  <p className="font-mono text-xs font-bold text-[#4f46e5]">{certificate.id}</p>
+                  <p className="font-mono text-xs font-bold text-[#4f46e5]">{certificate.certificateUid}</p>
                 </div>
               </div>
 
               <div className="space-y-2 text-center flex flex-col items-center p-4 bg-[#f8fafc] rounded-2xl border border-[#f1f5f9]">
-                <QRCodeSVG value={shareUrl} size={80} />
+                <QRCodeSVG value={qrValue} size={80} />
                 <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#94a3b8] pt-1">Scan to Verify</p>
               </div>
 
@@ -138,13 +164,13 @@ export default function CertificateView() {
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#94a3b8] font-mono">Digital Signature Hash</p>
                   <div className="font-mono text-[9px] text-[#94a3b8] w-40 break-all leading-tight">
-                    {certificate.hash}
+                    {certificate.documentHash}
                   </div>
                 </div>
                 <div className="pt-6 border-t border-[#f1f5f9]">
                    <div className="flex items-center justify-end gap-2 text-[#0f172a] mb-1">
                      <ShieldCheck className="w-5 h-5 text-[#10b981]" />
-                     <span className="font-bold uppercase italic text-xs">Verified by CertiVerify AI</span>
+                     <span className="font-bold uppercase italic text-xs">Verified by CertiVerify</span>
                    </div>
                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#94a3b8]">Bureau académique</p>
                 </div>
@@ -164,7 +190,7 @@ export default function CertificateView() {
         </button>
         <button 
           onClick={() => {
-            navigator.clipboard.writeText(shareUrl);
+            navigator.clipboard.writeText(verifyUrl);
             showFeedback('Lien copié !');
           }}
           className="flex items-center gap-3 px-8 py-4 bg-white border border-slate-200 rounded-2xl font-bold hover:bg-slate-50 transition-all shadow-sm"

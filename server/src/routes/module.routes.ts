@@ -30,6 +30,9 @@ const uuidParam = z.object({ id: z.string().uuid('ID invalide') });
 // GET    /api/modules          — List all (any authenticated user)
 router.get('/', moduleController.list);
 
+// GET    /api/modules/progress  — Student progress across all modules
+router.get('/progress', moduleController.progress);
+
 // GET    /api/modules/:id      — Get one
 router.get('/:id', validate({ params: uuidParam }), moduleController.getById);
 
@@ -41,5 +44,11 @@ router.put('/:id', requireRole('admin'), validate({ params: uuidParam, body: upd
 
 // DELETE /api/modules/:id      — Soft delete (admin only)
 router.delete('/:id', requireRole('admin'), validate({ params: uuidParam }), moduleController.remove);
+
+// POST   /api/modules/:id/enroll  — Student enrolls in a module
+router.post('/:id/enroll', validate({ params: uuidParam }), moduleController.enroll);
+
+// POST   /api/modules/:id/complete — Mark module complete (admin or student)
+router.post('/:id/complete', validate({ params: uuidParam }), moduleController.complete);
 
 export default router;

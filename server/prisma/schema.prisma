@@ -137,6 +137,15 @@ enum ModuleStatus {
   @@map("module_status")
 }
 
+enum CertificateStatus {
+  draft
+  signed
+  delivered
+  revoked
+
+  @@map("certificate_status")
+}
+
 // ────────────────────────────────────────────────────────────────
 // Certificate — Cœur du système: diplôme signé numériquement
 // ────────────────────────────────────────────────────────────────
@@ -157,6 +166,10 @@ model Certificate {
   documentHash    String    @map("document_hash") @db.VarChar(128) // SHA-256 hex
   digitalSignature String   @map("digital_signature") @db.Text      // RSA sig base64
   canonicalData   Json      @map("canonical_data")                  // Données signées
+
+  // State machine & Student access
+  status          CertificateStatus @default(signed)
+  accessKey       String?   @map("access_key") @db.VarChar(64)     // HMAC-SHA256 secret for student download
 
   // Métadonnées
   issuedAt        DateTime  @default(now()) @map("issued_at") @db.Timestamptz

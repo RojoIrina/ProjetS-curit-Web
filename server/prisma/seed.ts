@@ -84,18 +84,31 @@ async function main() {
     { title: 'Intelligence Artificielle', description: 'Introduction aux réseaux de neurones, machine learning et deep learning.', creditHours: 50 },
   ];
 
+  const createdModules: string[] = [];
   for (const mod of modulesData) {
-    const created = await prisma.module.upsert({
-      where: { id: crypto.randomUUID() }, // Will always create since UUID is unique
-      update: {},
-      create: {
+    const created = await prisma.module.create({
+      data: {
         ...mod,
         institutionId: institution.id,
         isActive: true,
       },
     });
+    createdModules.push(created.id);
     console.log(`✅ Module: ${created.title}`);
   }
+
+  // 6. Enroll student in all modules, complete 2 of 3
+  for (let i = 0; i < createdModules.length; i++) {
+    await prisma.userModule.create({
+      data: {
+        userId: student.id,
+        moduleId: createdModules[i],
+        status: i < 2 ? 'completed' : 'enrolled', // First 2 completed, last enrolled
+        completedAt: i < 2 ? new Date() : null,
+      },
+    });
+  }
+  console.log(`✅ Student enrolled in ${createdModules.length} modules (${2} completed)`);
 
   console.log('\n🎉 Seed complete!\n');
   console.log('─── Test Credentials ───');

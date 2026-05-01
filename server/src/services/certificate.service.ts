@@ -66,7 +66,10 @@ export async function issueCertificate(params: {
   const documentHash = cryptoService.hashDocument(canonicalJson);
   const digitalSignature = cryptoService.signHash(documentHash, keyPair.privateKeyRef);
 
-  // 6. Store in database
+  // 6. Generate student access key (HMAC-derived secret)
+  const accessKey = cryptoService.generateAccessKey(certificateUid, student.id);
+
+  // 7. Store in database
   const certificate = await prisma.certificate.create({
     data: {
       certificateUid,
@@ -79,6 +82,8 @@ export async function issueCertificate(params: {
       documentHash,
       digitalSignature,
       canonicalData: payload,
+      status: 'signed',
+      accessKey,
     },
     include: {
       student: { select: { id: true, fullName: true, email: true } },
@@ -86,7 +91,93 @@ export async function issueCertificate(params: {
     },
   });
 
-  return certificate;
+  return { ...certificate, accessKey };
+}
+
+/**
+ * Auto-issue a certificate when a student completes all modules.
+ * Checks if ALL active modules for the institution are completed.
+ * Returns the certificate if issued, null if not ready.
+ */
+export async function autoIssueIfReady(
+  studentId: string,
+  institutionId: string,
+  issuedBy: string
+) {
+  // Check if student already has a certificate
+  const existing = await prisma.certificate.findFirst({
+    where: { studentId, institutionId, revokedAt: null },
+  });
+  if (existing) return null; // Already has one
+
+  // Get all active modules for the institution
+  const allModules = await prisma.module.findMany({
+    where: { institutionId, isActive: true },
+  });
+
+  if (allModules.length === 0) return null;
+
+  // Get student's completed modules
+  const completedModules = await prisma.userModule.findMany({
+    where: {
+      userId: studentId,
+      moduleId: { in: allModules.map(m => m.id) },
+      status: 'completed',
+    },
+  });
+
+  // Check if all modules are completed
+  if (completedModules.length < allModules.length) return null;
+
+  // All modules completed! Auto-issue certificate
+  return issueCertificate({
+    studentId,
+    institutionId,
+    issuedBy,
+    title: 'Architecture & Sécurité des Systèmes Numériques',
+  });
+}
+
+/**
+ * Download/access a certificate using the student's access key.
+ * This is a PUBLIC endpoint — no auth needed, but requires the access key.
+ */
+export async function downloadCertificate(uid: string, accessKey: string) {
+  const certificate = await prisma.certificate.findUnique({
+    where: { certificateUid: uid },
+    include: {
+      student: { select: { id: true, fullName: true, email: true } },
+      institution: { select: { id: true, name: true } },
+      keyPair: { select: { publicKeyPem: true } },
+    },
+  });
+
+  if (!certificate) {
+    throw new NotFoundError('Certificat', uid);
+  }
+
+  // Verify access key
+  const isValid = cryptoService.verifyAccessKey(
+    certificate.certificateUid,
+    certificate.studentId,
+    accessKey
+  );
+
+  if (!isValid) {
+    throw new ForbiddenError('Clé d\'accès invalide');
+  }
+
+  // Update status to delivered on first access
+  if (certificate.status === 'signed') {
+    await prisma.certificate.update({
+      where: { id: certificate.id },
+      data: { status: 'delivered' },
+    });
+  }
+
+  // Return full certificate data (including signature info for PDF)
+  const { keyPair, ...rest } = certificate;
+  return { ...rest, status: certificate.status === 'signed' ? 'delivered' : certificate.status };
 }
 
 /**

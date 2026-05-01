@@ -83,3 +83,58 @@ export async function remove(req: Request, res: Response, next: NextFunction) {
     next(err);
   }
 }
+
+export async function enroll(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.id;
+    const moduleId = req.params.id;
+
+    const result = await moduleService.enrollStudent(userId, moduleId);
+
+    await auditService.logAudit({
+      userId: req.user!.id,
+      action: 'module.enrolled',
+      resourceType: 'user_module',
+      details: { moduleId },
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function complete(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.body.userId || req.user!.id;
+    const moduleId = req.params.id;
+
+    const result = await moduleService.completeModule(userId, moduleId);
+
+    await auditService.logAudit({
+      userId: req.user!.id,
+      action: 'module.completed',
+      resourceType: 'user_module',
+      details: { moduleId, studentId: userId },
+      ipAddress: req.ip,
+    });
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function progress(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.role === 'admin' && req.query.userId
+      ? req.query.userId as string
+      : req.user!.id;
+
+    const result = await moduleService.getStudentProgress(userId, req.user!.institutionId ?? undefined);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}

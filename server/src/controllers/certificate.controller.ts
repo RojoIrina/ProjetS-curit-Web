@@ -109,3 +109,21 @@ export async function revoke(req: Request, res: Response, next: NextFunction) {
     next(err);
   }
 }
+
+/** Public download — requires access key, no auth */
+export async function download(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { uid } = req.params;
+    const { key } = req.query as Record<string, string>;
+
+    if (!key) {
+      res.status(400).json({ success: false, error: 'Clé d\'accès requise (paramètre ?key=...)' });
+      return;
+    }
+
+    const cert = await certificateService.downloadCertificate(uid.toUpperCase(), key);
+    res.json({ success: true, data: cert });
+  } catch (err) {
+    next(err);
+  }
+}

@@ -9,6 +9,11 @@ import { validate } from '../middleware/validate.js';
 
 const router = Router();
 
+// ─── Public route (no auth) ───
+// GET /api/certificates/:uid/download?key=... — Download with access key
+router.get('/:uid/download', certificateController.download);
+
+// ─── Protected routes ───
 router.use(requireAuth);
 
 const issueSchema = z.object({

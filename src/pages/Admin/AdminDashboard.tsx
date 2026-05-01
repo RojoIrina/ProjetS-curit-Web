@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 
 export default function AdminDashboard() {
-  const { users, modules, certificates, currentUser, setCurrentUser } = useStore();
+  const { users, modules, certificates, currentUser, logout } = useStore();
   const navigate = useNavigate();
 
   if (!currentUser || currentUser.role !== 'admin') {
@@ -31,7 +31,7 @@ export default function AdminDashboard() {
           <p className="text-slate-500 font-medium">Gérez votre centre de formation et suivez les certifications.</p>
         </div>
         <button 
-          onClick={() => { setCurrentUser(null); navigate('/login'); }}
+          onClick={() => { logout(); navigate('/login'); }}
           className="flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all font-bold text-xs uppercase tracking-widest"
         >
           <LogOut className="w-4 h-4" />
@@ -83,17 +83,33 @@ export default function AdminDashboard() {
                   <tr>
                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">ID Unique</th>
                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Étudiant</th>
+                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Statut</th>
                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Date d'émission</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {certificates.map(cert => (
-                    <tr key={cert.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-mono text-[10px] text-indigo-600 font-bold">{cert.id}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-700">{cert.studentName}</td>
-                      <td className="px-6 py-4 text-xs text-slate-500">{cert.issueDate}</td>
-                    </tr>
-                  ))}
+                  {certificates.map(cert => {
+                    const statusColors: Record<string, string> = {
+                      signed: 'text-indigo-600 bg-indigo-50',
+                      delivered: 'text-emerald-600 bg-emerald-50',
+                      revoked: 'text-rose-600 bg-rose-50',
+                      draft: 'text-amber-600 bg-amber-50',
+                    };
+                    return (
+                      <tr key={cert.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 font-mono text-[10px] text-indigo-600 font-bold">{cert.certificateUid}</td>
+                        <td className="px-6 py-4 font-semibold text-slate-700">{cert.studentName}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${statusColors[cert.status] || 'text-slate-600 bg-slate-50'}`}>
+                            {cert.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-500">
+                          {cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('fr-FR') : 'N/A'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -112,7 +128,7 @@ export default function AdminDashboard() {
               <div key={module.id} className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between shadow-sm">
                 <div className="space-y-0.5">
                   <p className="text-sm font-bold text-slate-800">{module.title}</p>
-                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{module.id}</p>
+                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{module.creditHours}h</p>
                 </div>
                 <BookOpen className="w-4 h-4 text-slate-300" />
               </div>
