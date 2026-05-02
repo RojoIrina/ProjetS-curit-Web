@@ -1,6 +1,6 @@
 // ================================================================
-// STORE CONTEXT — Migrated from localStorage to API backend
-// All state now comes from the CertiVerify Express API
+// STORE CONTEXT — Migrated to HttpOnly cookie-based auth
+// Access token in memory only. Refresh token in HttpOnly cookie.
 // ================================================================
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import {
@@ -10,57 +10,24 @@ import {
   listCertificatesApi, issueCertificateApi,
   toggleModuleApi, verifyCertificateApi,
   enrollModuleApi, completeModuleApi, getProgressApi,
-  setTokens, clearTokens, getAccessToken,
+  setAccessToken, clearTokens, getAccessToken,
   type AuthUser, type VerifyResult,
 } from '../services/api';
+import type {
+  UserResponse, ModuleResponse, ModuleProgressResponse, CertificateResponse,
+} from '../types/api.types';
 
 // ─── Types ───
 
-export interface User {
-  id: string;
-  fullName: string;
-  email: string;
-  role: 'admin' | 'student' | 'verifier';
-  isActive: boolean;
-  institutionId: string | null;
-  institution?: { id: string; name: string } | null;
-  userModules?: { moduleId: string; status: string; completedAt: string | null; module: { id: string; title: string } }[];
+export type User = UserResponse & {
   completedModules?: string[];
-}
+};
 
-export interface Module {
-  id: string;
-  title: string;
-  description: string | null;
-  creditHours: number;
-  isActive: boolean;
-}
+export type Module = ModuleResponse;
 
-export interface ModuleProgress {
-  id: string;
-  title: string;
-  description: string | null;
-  creditHours: number;
-  status: 'enrolled' | 'in_progress' | 'completed' | 'not_enrolled';
-  completedAt: string | null;
-}
+export type ModuleProgress = ModuleProgressResponse;
 
-export interface Certificate {
-  id: string;
-  certificateUid: string;
-  studentId: string;
-  studentName: string;
-  title: string;
-  documentHash: string;
-  digitalSignature?: string;
-  status: string;
-  accessKey?: string;
-  issuedAt: string;
-  revokedAt: string | null;
-  qrPayload?: string;
-  student?: { id: string; fullName: string; email: string };
-  institution?: { id: string; name: string };
-}
+export type Certificate = CertificateResponse;
 
 interface StoreContextType {
   users: User[];
@@ -87,7 +54,7 @@ interface StoreContextType {
   toggleModuleCompletion: (userId: string, moduleId: string) => Promise<void>;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   setModules: React.Dispatch<React.SetStateAction<Module[]>>;
-  setCurrentUser: (user: any | null) => void;
+  setCurrentUser: (user: User | null) => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -101,21 +68,26 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ─── Bootstrap: try to restore session via cookie-based refresh ───
   useEffect(() => {
+    // If there's a saved access token in sessionStorage (legacy), use it
     const savedToken = sessionStorage.getItem('cv_access_token');
-    const savedRefresh = sessionStorage.getItem('cv_refresh_token');
-    if (savedToken && savedRefresh) {
-      setTokens(savedToken, savedRefresh);
-      getProfileApi().then(res => {
-        if (res.success && res.data) {
-          setCurrentUser(res.data as User);
-        } else {
-          clearTokens();
-          sessionStorage.removeItem('cv_access_token');
-          sessionStorage.removeItem('cv_refresh_token');
-        }
-      });
+    if (savedToken) {
+      setAccessToken(savedToken);
+      sessionStorage.removeItem('cv_access_token');
+      sessionStorage.removeItem('cv_refresh_token'); // Clean up legacy
     }
+
+    // Try to get profile — if refresh cookie exists, server will auto-refresh
+    getProfileApi().then(res => {
+      if (res.success && res.data) {
+        setCurrentUser(mapUser(res.data));
+      } else {
+        clearTokens();
+      }
+    }).catch(() => {
+      clearTokens();
+    });
   }, []);
 
   useEffect(() => {
@@ -134,11 +106,10 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     try {
       const res = await loginApi(email, password);
       if (res.success && res.data) {
-        sessionStorage.setItem('cv_access_token', res.data.accessToken);
-        sessionStorage.setItem('cv_refresh_token', res.data.refreshToken);
+        // Access token already set in api.ts; refresh token is in HttpOnly cookie
         const profileRes = await getProfileApi();
         if (profileRes.success && profileRes.data) {
-          const user = profileRes.data as User;
+          const user = mapUser(profileRes.data);
           setCurrentUser(user);
           return user;
         }
@@ -154,10 +125,8 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
-    logoutApi().catch(() => {});
+    logoutApi().catch(() => {}); // Fire-and-forget; server clears cookie
     clearTokens();
-    sessionStorage.removeItem('cv_access_token');
-    sessionStorage.removeItem('cv_refresh_token');
     setCurrentUser(null);
     setUsers([]);
     setCertificates([]);
@@ -201,7 +170,7 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     await completeModuleApi(moduleId, userId);
     refreshProgress();
     const profileRes = await getProfileApi();
-    if (profileRes.success && profileRes.data) setCurrentUser(profileRes.data as User);
+    if (profileRes.success && profileRes.data) setCurrentUser(mapUser(profileRes.data));
   };
 
   const refreshCertificates = useCallback(async () => {
@@ -230,14 +199,14 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
   const toggleModuleCompletion = async (userId: string, moduleId: string) => {
     await toggleModuleApi(userId, moduleId);
     const profileRes = await getProfileApi();
-    if (profileRes.success && profileRes.data) setCurrentUser(profileRes.data as User);
+    if (profileRes.success && profileRes.data) setCurrentUser(mapUser(profileRes.data));
     refreshProgress();
     if (currentUser?.role === 'admin') refreshUsers();
   };
 
   return (
     <StoreContext.Provider value={{
-      users, modules, certificates, currentUser: currentUser as any, moduleProgress, isLoading, error,
+      users, modules, certificates, currentUser: currentUser as StoreContextType['currentUser'], moduleProgress, isLoading, error,
       login, logout, refreshUsers, addUser, removeUser,
       refreshModules, addModule, removeModule,
       refreshProgress, enrollInModule, completeModule: completeModuleAction,
@@ -255,11 +224,12 @@ export const useStore = () => {
   return context;
 };
 
-function mapUser(u: any): User {
+function mapUser(u: UserResponse): User {
   return {
     ...u,
     completedModules: u.userModules
-      ?.filter((um: any) => um.status === 'completed')
-      .map((um: any) => um.moduleId) ?? [],
+      ?.filter((um) => um.status === 'completed')
+      .map((um) => um.moduleId) ?? [],
   };
 }
+

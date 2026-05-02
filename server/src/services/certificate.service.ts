@@ -5,8 +5,14 @@
 //   1. ISSUE: canonicalize → hash → sign → store
 //   2. VERIFY: load → re-hash canonical data → verify signature
 //   3. REVOKE: mark as revoked with timestamp and reason
+//
+// Now uses Repository layer for all data access.
 // ================================================================
-import { prisma } from '../config/database.js';
+import * as certRepo from '../repositories/certificate.repository.js';
+import * as keypairRepo from '../repositories/keypair.repository.js';
+import * as userRepo from '../repositories/user.repository.js';
+import * as moduleRepo from '../repositories/module.repository.js';
+import * as verificationRepo from '../repositories/verification.repository.js';
 import { NotFoundError, ValidationError, ForbiddenError } from '../errors/AppError.js';
 import * as cryptoService from './crypto.service.js';
 import type { CertificatePayload } from '../types/index.js';
@@ -30,19 +36,14 @@ export async function issueCertificate(params: {
   title: string;
 }) {
   // 1. Validate student
-  const student = await prisma.user.findUnique({
-    where: { id: params.studentId },
-    include: { userModules: true },
-  });
+  const student = await userRepo.findByIdFull(params.studentId);
 
   if (!student || student.role !== 'student') {
     throw new NotFoundError('Étudiant', params.studentId);
   }
 
   // 2. Load active key pair for institution
-  const keyPair = await prisma.keyPair.findFirst({
-    where: { institutionId: params.institutionId, isActive: true },
-  });
+  const keyPair = await keypairRepo.findActiveByInstitution(params.institutionId);
 
   if (!keyPair) {
     throw new ValidationError('Aucune clé de signature active pour cette institution');
@@ -70,25 +71,19 @@ export async function issueCertificate(params: {
   const accessKey = cryptoService.generateAccessKey(certificateUid, student.id);
 
   // 7. Store in database
-  const certificate = await prisma.certificate.create({
-    data: {
-      certificateUid,
-      studentId: student.id,
-      institutionId: params.institutionId,
-      issuedBy: params.issuedBy,
-      keyPairId: keyPair.id,
-      title: params.title,
-      studentName: student.fullName,
-      documentHash,
-      digitalSignature,
-      canonicalData: payload,
-      status: 'signed',
-      accessKey,
-    },
-    include: {
-      student: { select: { id: true, fullName: true, email: true } },
-      institution: { select: { id: true, name: true } },
-    },
+  const certificate = await certRepo.create({
+    certificateUid,
+    studentId: student.id,
+    institutionId: params.institutionId,
+    issuedBy: params.issuedBy,
+    keyPairId: keyPair.id,
+    title: params.title,
+    studentName: student.fullName,
+    documentHash,
+    digitalSignature,
+    canonicalData: payload,
+    status: 'signed',
+    accessKey,
   });
 
   return { ...certificate, accessKey };
@@ -105,29 +100,24 @@ export async function autoIssueIfReady(
   issuedBy: string
 ) {
   // Check if student already has a certificate
-  const existing = await prisma.certificate.findFirst({
-    where: { studentId, institutionId, revokedAt: null },
+  const existing = await certRepo.findFirst({
+    studentId, institutionId, revokedAt: null,
   });
   if (existing) return null; // Already has one
 
   // Get all active modules for the institution
-  const allModules = await prisma.module.findMany({
-    where: { institutionId, isActive: true },
-  });
+  const allModules = await moduleRepo.findManyActive(institutionId);
 
   if (allModules.length === 0) return null;
 
-  // Get student's completed modules
-  const completedModules = await prisma.userModule.findMany({
-    where: {
-      userId: studentId,
-      moduleId: { in: allModules.map(m => m.id) },
-      status: 'completed',
-    },
-  });
+  // Get student's progress
+  const modulesWithProgress = await moduleRepo.findWithUserModules(studentId, institutionId);
+  const completedCount = modulesWithProgress.filter(
+    m => m.userModules.some(um => um.status === 'completed')
+  ).length;
 
   // Check if all modules are completed
-  if (completedModules.length < allModules.length) return null;
+  if (completedCount < allModules.length) return null;
 
   // All modules completed! Auto-issue certificate
   return issueCertificate({
@@ -143,14 +133,7 @@ export async function autoIssueIfReady(
  * This is a PUBLIC endpoint — no auth needed, but requires the access key.
  */
 export async function downloadCertificate(uid: string, accessKey: string) {
-  const certificate = await prisma.certificate.findUnique({
-    where: { certificateUid: uid },
-    include: {
-      student: { select: { id: true, fullName: true, email: true } },
-      institution: { select: { id: true, name: true } },
-      keyPair: { select: { publicKeyPem: true } },
-    },
-  });
+  const certificate = await certRepo.findByUidWithStudent(uid);
 
   if (!certificate) {
     throw new NotFoundError('Certificat', uid);
@@ -169,10 +152,7 @@ export async function downloadCertificate(uid: string, accessKey: string) {
 
   // Update status to delivered on first access
   if (certificate.status === 'signed') {
-    await prisma.certificate.update({
-      where: { id: certificate.id },
-      data: { status: 'delivered' },
-    });
+    await certRepo.update(certificate.id, { status: 'delivered' });
   }
 
   // Return full certificate data (including signature info for PDF)
@@ -199,14 +179,7 @@ export async function verifyCertificate(
   meta?: { ipAddress?: string; userAgent?: string; qrSig?: string }
 ) {
   // 1. Look up certificate
-  const certificate = await prisma.certificate.findUnique({
-    where: { certificateUid: uid },
-    include: {
-      keyPair: { select: { publicKeyPem: true } },
-      student: { select: { fullName: true } },
-      institution: { select: { name: true } },
-    },
-  });
+  const certificate = await certRepo.findByUid(uid);
 
   let result: VerificationResult;
   let details: Record<string, unknown> = {};
@@ -286,18 +259,15 @@ export async function verifyCertificate(
 export async function revokeCertificate(
   certificateId: string,
   reason: string,
-  revokedBy: string
+  _revokedBy: string
 ) {
-  const cert = await prisma.certificate.findUnique({ where: { id: certificateId } });
+  const cert = await certRepo.findById(certificateId);
   if (!cert) throw new NotFoundError('Certificat', certificateId);
   if (cert.revokedAt) throw new ValidationError('Ce certificat est déjà révoqué');
 
-  return prisma.certificate.update({
-    where: { id: certificateId },
-    data: {
-      revokedAt: new Date(),
-      revocationReason: reason,
-    },
+  return certRepo.update(certificateId, {
+    revokedAt: new Date(),
+    revocationReason: reason,
   });
 }
 
@@ -308,30 +278,12 @@ export async function listCertificates(filters?: {
   limit?: number;
   offset?: number;
 }) {
-  return prisma.certificate.findMany({
-    where: {
-      ...(filters?.studentId && { studentId: filters.studentId }),
-      ...(filters?.institutionId && { institutionId: filters.institutionId }),
-    },
-    include: {
-      student: { select: { id: true, fullName: true, email: true } },
-      institution: { select: { id: true, name: true } },
-    },
-    orderBy: { issuedAt: 'desc' },
-    take: filters?.limit ?? 50,
-    skip: filters?.offset ?? 0,
-  });
+  return certRepo.findMany(filters);
 }
 
 /** Get a single certificate by ID */
 export async function getCertificateById(id: string) {
-  const cert = await prisma.certificate.findUnique({
-    where: { id },
-    include: {
-      student: { select: { id: true, fullName: true, email: true } },
-      institution: { select: { id: true, name: true } },
-    },
-  });
+  const cert = await certRepo.findById(id);
   if (!cert) throw new NotFoundError('Certificat', id);
   return cert;
 }
@@ -339,7 +291,7 @@ export async function getCertificateById(id: string) {
 // ─── Helpers ───
 
 /** Remove sensitive fields before sending to client */
-function sanitizeCert(cert: any) {
+function sanitizeCert(cert: Record<string, unknown>) {
   const { keyPair, ...rest } = cert;
   return {
     ...rest,
@@ -357,17 +309,16 @@ async function logVerification(
   meta?: { ipAddress?: string; userAgent?: string }
 ) {
   try {
-    await prisma.verificationLog.create({
-      data: {
-        certificateId,
-        certificateUid,
-        method,
-        result,
-        ipAddress: meta?.ipAddress ?? null,
-        userAgent: meta?.userAgent ?? null,
-      },
+    await verificationRepo.create({
+      certificateId,
+      certificateUid,
+      method,
+      result,
+      ipAddress: meta?.ipAddress ?? null,
+      userAgent: meta?.userAgent ?? null,
     });
   } catch (err) {
     console.error('[VERIFY-LOG] Failed to log verification:', err);
   }
 }
+

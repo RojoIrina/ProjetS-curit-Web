@@ -14,7 +14,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { prisma } from '../config/database.js';
+import * as userRepo from '../repositories/user.repository.js';
 import { env } from '../config/env.js';
 import { UnauthorizedError, ConflictError, NotFoundError } from '../errors/AppError.js';
 import type { TokenPair, AuthUser } from '../types/index.js';
@@ -73,7 +73,7 @@ export async function register(
   institutionId?: string
 ): Promise<TokenPair> {
   // Check uniqueness
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await userRepo.findByEmail(email);
   if (existing) {
     throw new ConflictError('Un compte avec cet email existe déjà');
   }
@@ -81,15 +81,13 @@ export async function register(
   const passwordHash = await hashPassword(password);
   const refreshToken = generateRefreshToken();
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      fullName,
-      role,
-      institutionId: institutionId ?? null,
-      refreshToken: hashRefreshToken(refreshToken),
-    },
+  const user = await userRepo.create({
+    email,
+    passwordHash,
+    fullName,
+    role,
+    institutionId: institutionId ?? null,
+    refreshToken: hashRefreshToken(refreshToken),
   });
 
   const authUser: AuthUser = {
@@ -106,7 +104,7 @@ export async function register(
 }
 
 export async function login(email: string, password: string): Promise<TokenPair & { user: AuthUser }> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await userRepo.findByEmail(email);
   if (!user || !user.isActive) {
     // Generic message to prevent user enumeration
     throw new UnauthorizedError('Email ou mot de passe incorrect');
@@ -120,12 +118,9 @@ export async function login(email: string, password: string): Promise<TokenPair 
   const refreshToken = generateRefreshToken();
 
   // Update last login and refresh token
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      lastLoginAt: new Date(),
-      refreshToken: hashRefreshToken(refreshToken),
-    },
+  await userRepo.update(user.id, {
+    lastLoginAt: new Date(),
+    refreshToken: hashRefreshToken(refreshToken),
   });
 
   const authUser: AuthUser = {
@@ -145,9 +140,7 @@ export async function login(email: string, password: string): Promise<TokenPair 
 export async function refreshAccessToken(refreshToken: string): Promise<TokenPair> {
   const hashedToken = hashRefreshToken(refreshToken);
 
-  const user = await prisma.user.findFirst({
-    where: { refreshToken: hashedToken, isActive: true },
-  });
+  const user = await userRepo.findByRefreshToken(hashedToken);
 
   if (!user) {
     throw new UnauthorizedError('Refresh token invalide ou expiré');
@@ -155,9 +148,8 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenPai
 
   // Rotate refresh token (one-time use)
   const newRefreshToken = generateRefreshToken();
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken: hashRefreshToken(newRefreshToken) },
+  await userRepo.update(user.id, {
+    refreshToken: hashRefreshToken(newRefreshToken),
   });
 
   const authUser: AuthUser = {
@@ -174,27 +166,12 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenPai
 }
 
 export async function logout(userId: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { refreshToken: null },
-  });
+  await userRepo.update(userId, { refreshToken: null });
 }
 
 export async function getUserProfile(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      role: true,
-      institutionId: true,
-      institution: { select: { id: true, name: true } },
-      lastLoginAt: true,
-      createdAt: true,
-    },
-  });
-
+  const user = await userRepo.findById(userId);
   if (!user) throw new NotFoundError('Utilisateur', userId);
   return user;
 }
+

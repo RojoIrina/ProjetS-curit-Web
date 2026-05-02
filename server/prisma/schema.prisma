@@ -110,6 +110,7 @@ model Module {
   institution Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
   userModules UserModule[]
 
+  @@index([institutionId])
   @@map("modules")
 }
 
@@ -188,6 +189,7 @@ model Certificate {
   @@index([certificateUid])
   @@index([studentId])
   @@index([institutionId])
+  @@index([studentId, institutionId])
   @@map("certificates")
 }
 

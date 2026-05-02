@@ -5,6 +5,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import { generalLimiter } from './middleware/rate.limiter.js';
 import { errorHandler } from './middleware/error.handler.js';
@@ -37,8 +38,11 @@ app.use(cors({
   origin: env.CORS_ORIGIN,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
+  credentials: true, // Required for HttpOnly cookies
 }));
+
+// ─── Cookie Parser (for HttpOnly refresh token) ───
+app.use(cookieParser());
 
 // ─── Rate Limiting ───
 app.use(generalLimiter);
@@ -80,3 +84,4 @@ app.listen(env.PORT, () => {
 });
 
 export default app;
+
