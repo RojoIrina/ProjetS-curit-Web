@@ -2,6 +2,7 @@
 // DATABASE SEED — Initial data for development
 // Creates: institution, admin user, RSA key pair, sample modules
 // ================================================================
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
@@ -49,7 +50,13 @@ async function main() {
   const adminPassword = await bcrypt.hash('admin123', 12);
   const admin = await prisma.user.upsert({
     where: { email: 'admin@certiverify.com' },
-    update: {},
+    update: {
+      passwordHash: adminPassword,
+      fullName: 'Admin Principal',
+      role: 'admin',
+      institutionId: institution.id,
+      isActive: true,
+    },
     create: {
       email: 'admin@certiverify.com',
       passwordHash: adminPassword,
@@ -65,7 +72,13 @@ async function main() {
   const studentPassword = await bcrypt.hash('student123', 12);
   const student = await prisma.user.upsert({
     where: { email: 'jean@student.com' },
-    update: {},
+    update: {
+      passwordHash: studentPassword,
+      fullName: 'Jean Dupont',
+      role: 'student',
+      institutionId: institution.id,
+      isActive: true,
+    },
     create: {
       email: 'jean@student.com',
       passwordHash: studentPassword,
