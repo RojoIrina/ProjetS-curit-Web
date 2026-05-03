@@ -14,14 +14,22 @@ router.use(requireAuth);
 const createModuleSchema = z.object({
   title: z.string().min(3, 'Titre trop court').max(255),
   description: z.string().optional(),
+  content: z.string().max(50000).optional(),
   creditHours: z.number().int().min(0).optional(),
+  order: z.number().int().min(0).optional(),
+  duration: z.number().int().min(0).optional(),
+  isRequired: z.boolean().optional(),
   institutionId: z.string().uuid().optional(),
 });
 
 const updateModuleSchema = z.object({
   title: z.string().min(3).max(255).optional(),
   description: z.string().optional(),
+  content: z.string().max(50000).optional(),
   creditHours: z.number().int().min(0).optional(),
+  order: z.number().int().min(0).optional(),
+  duration: z.number().int().min(0).optional(),
+  isRequired: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -32,6 +40,9 @@ router.get('/', moduleController.list);
 
 // GET    /api/modules/progress  — Student progress across all modules
 router.get('/progress', moduleController.progress);
+
+// GET    /api/modules/students/progress — Admin progress overview
+router.get('/students/progress', requireRole('admin'), moduleController.studentProgress);
 
 // GET    /api/modules/:id      — Get one
 router.get('/:id', validate({ params: uuidParam }), moduleController.getById);
@@ -48,7 +59,7 @@ router.delete('/:id', requireRole('admin'), validate({ params: uuidParam }), mod
 // POST   /api/modules/:id/enroll  — Student enrolls in a module
 router.post('/:id/enroll', validate({ params: uuidParam }), moduleController.enroll);
 
-// POST   /api/modules/:id/complete — Mark module complete (admin or student)
+// POST   /api/modules/:id/complete — Authenticated student marks own enrolled module complete
 router.post('/:id/complete', validate({ params: uuidParam }), moduleController.complete);
 
 export default router;

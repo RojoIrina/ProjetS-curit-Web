@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Search, CheckCircle, XCircle, ShieldCheck, Zap, Globe, Lock, ChevronRight, FileText, Quote } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../hooks/useStore';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useParams } from 'react-router-dom';
 import type { VerifyResult } from '../services/api';
 
 export default function Home() {
@@ -13,6 +13,7 @@ export default function Home() {
   const [isVerifying, setIsVerifying] = useState(false);
   const { verifyCertificate } = useStore();
   const [searchParams] = useSearchParams();
+  const { uid } = useParams();
 
   const handleVerify = useCallback(async (id: string, qrSig?: string) => {
     if (!id || id.trim().length < 5) return;
@@ -43,12 +44,12 @@ export default function Home() {
   }, [verifyCertificate]);
 
   useEffect(() => {
-    const verifyId = searchParams.get('verify') || searchParams.get('uid');
+    const verifyId = uid || searchParams.get('verify') || searchParams.get('uid');
     const sig = searchParams.get('sig');
     if (verifyId) {
       handleVerify(verifyId, sig || undefined);
     }
-  }, [searchParams, handleVerify]);
+  }, [uid, searchParams, handleVerify]);
 
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault();

@@ -44,10 +44,10 @@ router.put('/:id', requireRole('admin'), validate({ params: uuidParam, body: upd
 // DELETE /api/users/:id      — Soft delete (admin only)
 router.delete('/:id', requireRole('admin'), validate({ params: uuidParam }), userController.remove);
 
-// POST   /api/users/:id/modules — Toggle module completion (admin or self)
-router.post('/:id/modules', validate({ params: uuidParam, body: toggleModuleSchema }), userController.toggleModule);
-
 // POST   /api/users/me/modules — Toggle own module completion (student)
 router.post('/me/modules', validate({ body: toggleModuleSchema }), userController.toggleModule);
+
+// POST   /api/users/:id/modules — Admin-only legacy progress toggle
+router.post('/:id/modules', requireRole('admin'), validate({ params: uuidParam, body: toggleModuleSchema }), userController.toggleModule);
 
 export default router;

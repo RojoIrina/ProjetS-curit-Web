@@ -1,13 +1,22 @@
 import React, { useState } from 'react';
 import { useStore } from '../../hooks/useStore';
 import { Link, Navigate } from 'react-router-dom';
-import { Plus, Trash2, Edit2, BookOpen, X, Search, ChevronLeft, Check } from 'lucide-react';
+import { Plus, Trash2, Edit2, BookOpen, X, ChevronLeft, Check, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function ModuleCRUD() {
-  const { modules, addModule, removeModule, currentUser } = useStore();
+  const { modules, addModule, updateModule, removeModule, currentUser } = useStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ title: '', description: '' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    content: '',
+    creditHours: 0,
+    duration: 0,
+    order: 0,
+    isRequired: true,
+  });
   const [feedback, setFeedback] = useState<string | null>(null);
 
   if (!currentUser || currentUser.role !== 'admin') {
@@ -28,15 +37,51 @@ export default function ModuleCRUD() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await addModule({
-      title: formData.title,
-      description: formData.description,
-    });
+    const payload = {
+      ...formData,
+      creditHours: Number(formData.creditHours) || 0,
+      duration: Number(formData.duration) || 0,
+      order: Number(formData.order) || 0,
+    };
+    const result = editingId
+      ? await updateModule(editingId, payload)
+      : await addModule(payload);
     if (result) {
       setIsModalOpen(false);
-      setFormData({ title: '', description: '' });
-      showFeedback('Module ajouté au catalogue');
+      setEditingId(null);
+      resetForm();
+      showFeedback(editingId ? 'Cours mis à jour' : 'Cours ajouté au catalogue');
     }
+  };
+
+  const resetForm = () => setFormData({
+    title: '',
+    description: '',
+    content: '',
+    creditHours: 0,
+    duration: 0,
+    order: 0,
+    isRequired: true,
+  });
+
+  const openCreate = () => {
+    setEditingId(null);
+    resetForm();
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (module: typeof modules[number]) => {
+    setEditingId(module.id);
+    setFormData({
+      title: module.title,
+      description: module.description ?? '',
+      content: module.content ?? '',
+      creditHours: module.creditHours ?? 0,
+      duration: module.duration ?? 0,
+      order: module.order ?? 0,
+      isRequired: module.isRequired ?? true,
+    });
+    setIsModalOpen(true);
   };
 
   return (
@@ -67,7 +112,7 @@ export default function ModuleCRUD() {
         </AnimatePresence>
 
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={openCreate}
           className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
         >
           <Plus className="w-5 h-5" />
@@ -91,7 +136,10 @@ export default function ModuleCRUD() {
                   <BookOpen className="w-6 h-6" />
                 </div>
                 <div className="flex gap-2">
-                  <button className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-indigo-600">
+                  <button
+                    onClick={() => openEdit(module)}
+                    className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-indigo-600"
+                  >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button 
@@ -105,10 +153,16 @@ export default function ModuleCRUD() {
               <div className="space-y-2">
                 <h3 className="text-xl font-bold">{module.title}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed">{module.description}</p>
+                {module.content && (
+                  <p className="text-xs text-slate-400 line-clamp-3 whitespace-pre-line">{module.content}</p>
+                )}
               </div>
-              {module.creditHours > 0 && (
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{module.creditHours}h de formation</p>
-              )}
+              <div className="flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                {module.creditHours > 0 && <span>{module.creditHours}h credits</span>}
+                {module.duration > 0 && <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />{module.duration} min</span>}
+                <span>{module.isRequired ? 'Requis' : 'Optionnel'}</span>
+                <span>Ordre {module.order}</span>
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -121,18 +175,18 @@ export default function ModuleCRUD() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => { setIsModalOpen(false); setEditingId(null); }}
               className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             />
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl space-y-6"
+              className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl p-8 shadow-2xl space-y-6"
             >
               <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold">Nouveau Module</h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                <h3 className="text-xl font-bold">{editingId ? 'Modifier le cours' : 'Nouveau cours'}</h3>
+                <button onClick={() => { setIsModalOpen(false); setEditingId(null); }} className="p-2 hover:bg-gray-100 rounded-full">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -159,11 +213,61 @@ export default function ModuleCRUD() {
                     required
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase tracking-widest text-gray-400">Contenu riche</label>
+                  <textarea
+                    value={formData.content}
+                    onChange={(e) => setFormData({...formData, content: e.target.value})}
+                    className="w-full px-5 py-3 bg-[#F9F9F9] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 min-h-[180px]"
+                    placeholder="Markdown ou HTML contrôlé côté affichage..."
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-widest text-gray-400">Heures</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.creditHours}
+                      onChange={(e) => setFormData({...formData, creditHours: Number(e.target.value)})}
+                      className="w-full px-4 py-3 bg-[#F9F9F9] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-widest text-gray-400">Durée</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.duration}
+                      onChange={(e) => setFormData({...formData, duration: Number(e.target.value)})}
+                      className="w-full px-4 py-3 bg-[#F9F9F9] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-widest text-gray-400">Ordre</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.order}
+                      onChange={(e) => setFormData({...formData, order: Number(e.target.value)})}
+                      className="w-full px-4 py-3 bg-[#F9F9F9] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-3 p-4 bg-[#F9F9F9] rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isRequired}
+                    onChange={(e) => setFormData({...formData, isRequired: e.target.checked})}
+                    className="w-4 h-4 accent-indigo-600"
+                  />
+                  <span className="text-sm font-bold text-slate-700">Cours requis pour la certification</span>
+                </label>
                 <button
                   type="submit"
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold mt-4 shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
                 >
-                  Créer le module
+                  {editingId ? 'Enregistrer les modifications' : 'Créer le cours'}
                 </button>
               </form>
             </motion.div>

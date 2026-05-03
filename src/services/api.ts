@@ -11,6 +11,7 @@
 import type {
   ApiResponse, AuthUser, LoginResponse, UserResponse, ModuleResponse,
   ModuleProgressResponse, CertificateResponse, VerifyResult, CreateUserResponse,
+  StudentProgressOverview,
 } from '../types/api.types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -174,6 +175,11 @@ export async function listModulesApi() {
 export async function createModuleApi(data: {
   title: string;
   description?: string;
+  content?: string;
+  creditHours?: number;
+  order?: number;
+  duration?: number;
+  isRequired?: boolean;
   institutionId?: string;
 }) {
   return apiFetch<ModuleResponse>('/modules', {
@@ -206,6 +212,10 @@ export async function completeModuleApi(moduleId: string, userId?: string) {
 
 export async function getProgressApi() {
   return apiFetch<ModuleProgressResponse[]>('/modules/progress');
+}
+
+export async function getStudentProgressOverviewApi() {
+  return apiFetch<StudentProgressOverview[]>('/modules/students/progress');
 }
 
 // ─── Certificates API ───
@@ -242,6 +252,27 @@ export async function downloadCertificateApi(uid: string, accessKey: string) {
     credentials: 'include',
   });
   return (await res.json()) as ApiResponse<CertificateResponse>;
+}
+
+export async function downloadCertificatePdfApi(id: string) {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+
+  let response = await fetch(`${API_BASE}/certificates/${id}/pdf`, {
+    headers,
+    credentials: 'include',
+  });
+
+  if (response.status === 401 && await tryRefreshToken()) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+    response = await fetch(`${API_BASE}/certificates/${id}/pdf`, {
+      headers,
+      credentials: 'include',
+    });
+  }
+
+  if (!response.ok) throw new Error('PDF download failed');
+  return response.blob();
 }
 
 // ─── Public Verification API (no auth) ───

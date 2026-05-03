@@ -4,8 +4,7 @@ import { useStore } from '../../hooks/useStore';
 import { Award, ShieldCheck, Download, Share2, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { downloadCertificatePdfApi } from '../../services/api';
 
 export default function CertificateView() {
   const { id } = useParams();
@@ -30,27 +29,16 @@ export default function CertificateView() {
   };
 
   const downloadPDF = async () => {
-    if (!certificateRef.current) return;
-    
     showFeedback('Génération du PDF...');
     
     try {
-      const canvas = await html2canvas(certificateRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-      
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [canvas.width / 2, canvas.height / 2]
-      });
-      
-      pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width / 2, canvas.height / 2);
-      pdf.save(`certificat-${certificate.studentName.replace(/\s+/g, '-')}-${certificate.certificateUid}.pdf`);
+      const blob = await downloadCertificatePdfApi(certificate.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `certificat-${certificate.studentName.replace(/\s+/g, '-')}-${certificate.certificateUid}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
       showFeedback('PDF Téléchargé !');
     } catch (error) {
       console.error('PDF Export failed:', error);

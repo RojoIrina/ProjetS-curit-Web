@@ -7,14 +7,17 @@ import {
   loginApi, logoutApi, getProfileApi,
   listUsersApi, createUserApi, deleteUserApi,
   listModulesApi, createModuleApi, deleteModuleApi,
+  updateModuleApi,
   listCertificatesApi, issueCertificateApi,
   toggleModuleApi, verifyCertificateApi,
   enrollModuleApi, completeModuleApi, getProgressApi,
-  setAccessToken, clearTokens, getAccessToken,
-  type AuthUser, type VerifyResult,
+  getStudentProgressOverviewApi,
+  setAccessToken, clearTokens,
+  type VerifyResult,
 } from '../services/api';
 import type {
   UserResponse, ModuleResponse, ModuleProgressResponse, CertificateResponse,
+  StudentProgressOverview,
 } from '../types/api.types';
 
 // ─── Types ───
@@ -35,6 +38,7 @@ interface StoreContextType {
   certificates: Certificate[];
   currentUser: (User & { role: string }) | null;
   moduleProgress: ModuleProgress[];
+  studentProgressOverview: StudentProgressOverview[];
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<User | null>;
@@ -43,9 +47,19 @@ interface StoreContextType {
   addUser: (data: { email: string; fullName: string; role: string }) => Promise<{ user: User; temporaryPassword: string } | null>;
   removeUser: (id: string) => Promise<void>;
   refreshModules: () => Promise<void>;
-  addModule: (data: { title: string; description: string }) => Promise<Module | null>;
+  addModule: (data: {
+    title: string;
+    description: string;
+    content?: string;
+    creditHours?: number;
+    order?: number;
+    duration?: number;
+    isRequired?: boolean;
+  }) => Promise<Module | null>;
+  updateModule: (id: string, data: Partial<Module>) => Promise<Module | null>;
   removeModule: (id: string) => Promise<void>;
   refreshProgress: () => Promise<void>;
+  refreshStudentProgressOverview: () => Promise<void>;
   enrollInModule: (moduleId: string) => Promise<void>;
   completeModule: (moduleId: string, userId?: string) => Promise<void>;
   refreshCertificates: () => Promise<void>;
@@ -65,6 +79,7 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [moduleProgress, setModuleProgress] = useState<ModuleProgress[]>([]);
+  const [studentProgressOverview, setStudentProgressOverview] = useState<StudentProgressOverview[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,7 +109,10 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     if (currentUser) {
       refreshModules();
       refreshCertificates();
-      if (currentUser.role === 'admin') refreshUsers();
+      if (currentUser.role === 'admin') {
+        refreshUsers();
+        refreshStudentProgressOverview();
+      }
       if (currentUser.role === 'student') refreshProgress();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,8 +169,22 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     if (res.success && res.data) setModules(res.data as Module[]);
   }, []);
 
-  const addModule = async (data: { title: string; description: string }) => {
+  const addModule = async (data: {
+    title: string;
+    description: string;
+    content?: string;
+    creditHours?: number;
+    order?: number;
+    duration?: number;
+    isRequired?: boolean;
+  }) => {
     const res = await createModuleApi(data);
+    if (res.success && res.data) { refreshModules(); return res.data as Module; }
+    return null;
+  };
+
+  const updateModuleAction = async (id: string, data: Partial<Module>) => {
+    const res = await updateModuleApi(id, data);
     if (res.success && res.data) { refreshModules(); return res.data as Module; }
     return null;
   };
@@ -164,11 +196,17 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     if (res.success && res.data) setModuleProgress(res.data as ModuleProgress[]);
   }, []);
 
+  const refreshStudentProgressOverview = useCallback(async () => {
+    const res = await getStudentProgressOverviewApi();
+    if (res.success && res.data) setStudentProgressOverview(res.data);
+  }, []);
+
   const enrollInModule = async (moduleId: string) => { await enrollModuleApi(moduleId); refreshProgress(); };
 
   const completeModuleAction = async (moduleId: string, userId?: string) => {
     await completeModuleApi(moduleId, userId);
     refreshProgress();
+    refreshCertificates();
     const profileRes = await getProfileApi();
     if (profileRes.success && profileRes.data) setCurrentUser(mapUser(profileRes.data));
   };
@@ -206,10 +244,10 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <StoreContext.Provider value={{
-      users, modules, certificates, currentUser: currentUser as StoreContextType['currentUser'], moduleProgress, isLoading, error,
+      users, modules, certificates, currentUser: currentUser as StoreContextType['currentUser'], moduleProgress, studentProgressOverview, isLoading, error,
       login, logout, refreshUsers, addUser, removeUser,
-      refreshModules, addModule, removeModule,
-      refreshProgress, enrollInModule, completeModule: completeModuleAction,
+      refreshModules, addModule, updateModule: updateModuleAction, removeModule,
+      refreshProgress, refreshStudentProgressOverview, enrollInModule, completeModule: completeModuleAction,
       refreshCertificates, issueCertificate: issueCert, verifyCertificate: verifyCert,
       toggleModuleCompletion, setUsers, setModules, setCurrentUser,
     }}>
@@ -232,4 +270,3 @@ function mapUser(u: UserResponse): User {
       .map((um) => um.moduleId) ?? [],
   };
 }
-

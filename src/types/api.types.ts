@@ -45,7 +45,7 @@ export interface UserModuleResponse {
   moduleId: string;
   status: string;
   completedAt: string | null;
-  module: { id: string; title: string };
+  module: { id: string; title: string; isRequired?: boolean };
 }
 
 /** Admin create user response */
@@ -59,7 +59,11 @@ export interface ModuleResponse {
   id: string;
   title: string;
   description: string | null;
+  content: string;
   creditHours: number;
+  order: number;
+  duration: number;
+  isRequired: boolean;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -70,9 +74,30 @@ export interface ModuleProgressResponse {
   id: string;
   title: string;
   description: string | null;
+  content: string;
   creditHours: number;
+  order: number;
+  duration: number;
+  isRequired: boolean;
   status: 'enrolled' | 'in_progress' | 'completed' | 'not_enrolled';
   completedAt: string | null;
+}
+
+export interface StudentProgressOverview {
+  id: string;
+  fullName: string;
+  email: string;
+  institutionId: string | null;
+  completedCount: number;
+  totalRequired: number;
+  percent: number;
+  modules: Array<{
+    moduleId: string;
+    title: string;
+    isRequired: boolean;
+    status: string;
+    completedAt: string | null;
+  }>;
 }
 
 /** Certificate response */

@@ -12,6 +12,7 @@ const router = Router();
 // ─── Public route (no auth) ───
 // GET /api/certificates/:uid/download?key=... — Download with access key
 router.get('/:uid/download', certificateController.download);
+router.get('/:uid/download.pdf', certificateController.downloadPublicPdf);
 
 // ─── Protected routes ───
 router.use(requireAuth);
@@ -36,6 +37,9 @@ router.get('/', certificateController.list);
 
 // GET    /api/certificates/:id      — Get one
 router.get('/:id', validate({ params: uuidParam }), certificateController.getById);
+
+// GET    /api/certificates/:id/pdf  — Backend-generated certificate PDF
+router.get('/:id/pdf', validate({ params: uuidParam }), certificateController.downloadPdf);
 
 // POST   /api/certificates/:id/revoke — Revoke (admin only)
 router.post('/:id/revoke', requireRole('admin'), validate({ params: uuidParam, body: revokeSchema }), certificateController.revoke);

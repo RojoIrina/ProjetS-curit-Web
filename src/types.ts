@@ -17,7 +17,11 @@ export interface Module {
   id: string;
   title: string;
   description: string | null;
+  content: string;
   creditHours: number;
+  order: number;
+  duration: number;
+  isRequired: boolean;
   isActive: boolean;
 }
 

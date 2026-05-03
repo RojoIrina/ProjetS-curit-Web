@@ -25,6 +25,7 @@ export default function App() {
         <Layout>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/verify/:uid" element={<Home />} />
             <Route path="/login" element={<Login />} />
             
             {/* Admin Routes — Protected, requires admin role */}
@@ -63,4 +64,3 @@ export default function App() {
     </StoreProvider>
   );
 }
-

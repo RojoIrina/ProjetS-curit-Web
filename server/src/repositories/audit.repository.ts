@@ -2,6 +2,7 @@
 // AUDIT REPOSITORY — Data access layer for AuditTrail model
 // ================================================================
 import { prisma } from '../config/database.js';
+import { Prisma } from '@prisma/client';
 
 export function create(data: {
   userId?: string | null;
@@ -17,7 +18,9 @@ export function create(data: {
       action: data.action,
       resourceType: data.resourceType ?? null,
       resourceId: data.resourceId ?? null,
-      details: data.details ?? null,
+      details: data.details === undefined
+        ? undefined
+        : (data.details === null ? Prisma.JsonNull : data.details as Prisma.InputJsonValue),
       ipAddress: data.ipAddress ?? null,
     },
   });

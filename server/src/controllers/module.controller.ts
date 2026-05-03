@@ -107,10 +107,15 @@ export async function enroll(req: Request, res: Response, next: NextFunction) {
 
 export async function complete(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = req.body.userId || req.user!.id;
+    if (req.user!.role !== 'student') {
+      res.status(403).json({ success: false, error: 'Seul un étudiant peut valider son propre cours' });
+      return;
+    }
+
+    const userId = req.user!.id;
     const moduleId = req.params.id;
 
-    const result = await moduleService.completeModule(userId, moduleId);
+    const result = await moduleService.completeModule(userId, moduleId, req.user!.id);
 
     await auditService.logAudit({
       userId: req.user!.id,
@@ -133,6 +138,15 @@ export async function progress(req: Request, res: Response, next: NextFunction) 
       : req.user!.id;
 
     const result = await moduleService.getStudentProgress(userId, req.user!.institutionId ?? undefined);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function studentProgress(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await moduleService.listStudentProgress(req.user!.institutionId ?? undefined);
     res.json({ success: true, data: result });
   } catch (err) {
     next(err);

@@ -13,7 +13,7 @@ export function findMany(filters?: { institutionId?: string; isActive?: boolean 
       ...(filters?.isActive !== undefined && { isActive: filters.isActive }),
       ...(filters?.institutionId && { institutionId: filters.institutionId }),
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
   });
 }
 
@@ -23,7 +23,7 @@ export function findManyActive(institutionId?: string) {
       isActive: true,
       ...(institutionId && { institutionId }),
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
   });
 }
 
@@ -39,21 +39,29 @@ export function findWithUserModules(userId: string, institutionId?: string) {
         select: { status: true, completedAt: true },
       },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
   });
 }
 
 export function create(data: {
   title: string;
   description?: string | null;
+  content?: string;
   creditHours?: number;
+  order?: number;
+  duration?: number;
+  isRequired?: boolean;
   institutionId: string;
 }) {
   return prisma.module.create({
     data: {
       title: data.title,
       description: data.description ?? null,
+      content: data.content ?? '',
       creditHours: data.creditHours ?? 0,
+      order: data.order ?? 0,
+      duration: data.duration ?? 0,
+      isRequired: data.isRequired ?? true,
       institutionId: data.institutionId,
     },
   });

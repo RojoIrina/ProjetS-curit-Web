@@ -22,7 +22,7 @@ const USER_SELECT = {
       moduleId: true,
       status: true,
       completedAt: true,
-      module: { select: { id: true, title: true } },
+      module: { select: { id: true, title: true, isRequired: true } },
     },
   },
 } as const;
@@ -123,10 +123,32 @@ export function createUserModule(data: {
 export function updateUserModule(
   userId: string,
   moduleId: string,
-  data: { status: string; completedAt: Date | null }
+  data: { status: 'enrolled' | 'in_progress' | 'completed'; completedAt: Date | null }
 ) {
   return prisma.userModule.update({
     where: { userId_moduleId: { userId, moduleId } },
     data,
+  });
+}
+
+export function findStudentsWithProgress(institutionId?: string) {
+  return prisma.user.findMany({
+    where: {
+      role: 'student',
+      ...(institutionId && { institutionId }),
+    },
+    select: USER_SELECT,
+    orderBy: { fullName: 'asc' },
+  });
+}
+
+export function findActiveAdminByInstitution(institutionId: string) {
+  return prisma.user.findFirst({
+    where: {
+      institutionId,
+      role: 'admin',
+      isActive: true,
+    },
+    orderBy: { createdAt: 'asc' },
   });
 }

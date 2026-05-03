@@ -22,7 +22,6 @@ import type { UserRole } from '@prisma/client';
 
 // Load RSA keys at startup
 const JWT_PRIVATE_KEY = fs.readFileSync(path.resolve(env.JWT_PRIVATE_KEY_PATH), 'utf-8');
-const JWT_PUBLIC_KEY = fs.readFileSync(path.resolve(env.JWT_PUBLIC_KEY_PATH), 'utf-8');
 
 /**
  * Hash a password with bcrypt.
@@ -49,7 +48,7 @@ function signAccessToken(user: AuthUser): string {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, institutionId: user.institutionId },
     JWT_PRIVATE_KEY,
-    { algorithm: 'RS256', expiresIn: env.JWT_ACCESS_EXPIRY }
+    { algorithm: 'RS256', expiresIn: env.JWT_ACCESS_EXPIRY as jwt.SignOptions['expiresIn'] }
   );
 }
 
@@ -174,4 +173,3 @@ export async function getUserProfile(userId: string) {
   if (!user) throw new NotFoundError('Utilisateur', userId);
   return user;
 }
-

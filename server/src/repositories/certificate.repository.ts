@@ -2,7 +2,7 @@
 // CERTIFICATE REPOSITORY — Data access layer for Certificate model
 // ================================================================
 import { prisma } from '../config/database.js';
-import type { CertificateStatus } from '@prisma/client';
+import { Prisma, type CertificateStatus } from '@prisma/client';
 
 const CERT_INCLUDE = {
   student: { select: { id: true, fullName: true, email: true } },
@@ -71,7 +71,7 @@ export function create(data: {
   studentName: string;
   documentHash: string;
   digitalSignature: string;
-  canonicalData: Record<string, unknown>;
+  canonicalData: Prisma.InputJsonValue;
   status: CertificateStatus;
   accessKey: string;
 }) {

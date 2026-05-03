@@ -5,7 +5,7 @@ import { Plus, Trash2, Edit2, Shield, User as UserIcon, X, Search, ChevronLeft, 
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function UserCRUD() {
-  const { users, addUser, removeUser, currentUser, modules } = useStore();
+  const { users, addUser, removeUser, currentUser, modules, studentProgressOverview } = useStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ fullName: '', email: '', role: 'student' as const });
   const [search, setSearch] = useState('');
@@ -47,7 +47,10 @@ export default function UserCRUD() {
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalModules = modules.length || 3;
+  const totalModules = modules.filter(m => m.isRequired).length || modules.length || 0;
+  const progressByStudent = new Map<string, typeof studentProgressOverview[number]>(
+    studentProgressOverview.map(progress => [progress.id, progress])
+  );
 
   return (
     <div className="space-y-8">
@@ -133,14 +136,21 @@ export default function UserCRUD() {
                 <td className="px-6 py-4 text-sm text-gray-500">{user.email}</td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-16 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-1.5 w-20 bg-gray-100 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-emerald-500" 
-                        style={{ width: `${((user.completedModules?.length || 0) / totalModules) * 100}%` }}
+                        style={{ width: `${progressByStudent.get(user.id)?.percent ?? ((user.completedModules?.length || 0) / Math.max(totalModules, 1)) * 100}%` }}
                       />
                     </div>
-                    <span className="text-xs font-bold text-gray-400">{user.completedModules?.length || 0}/{totalModules}</span>
+                    <span className="text-xs font-bold text-gray-400">
+                      {progressByStudent.get(user.id)?.completedCount ?? user.completedModules?.length ?? 0}/{progressByStudent.get(user.id)?.totalRequired ?? totalModules}
+                    </span>
                   </div>
+                  {progressByStudent.get(user.id) && (
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      {progressByStudent.get(user.id)?.percent}% certification
+                    </p>
+                  )}
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

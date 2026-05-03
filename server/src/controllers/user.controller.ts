@@ -86,7 +86,11 @@ export async function remove(req: Request, res: Response, next: NextFunction) {
 export async function toggleModule(req: Request, res: Response, next: NextFunction) {
   try {
     const { moduleId } = req.body;
-    const userId = req.params.id || req.user!.id;
+    const userId = req.params.id === 'me' || !req.params.id ? req.user!.id : req.params.id;
+    if (req.user!.role !== 'admin' && userId !== req.user!.id) {
+      res.status(403).json({ success: false, error: 'Vous ne pouvez modifier que votre propre progression' });
+      return;
+    }
     const result = await userService.toggleModuleCompletion(userId, moduleId);
     res.json({ success: true, data: result });
   } catch (err) {

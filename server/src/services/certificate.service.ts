@@ -13,9 +13,10 @@ import * as keypairRepo from '../repositories/keypair.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import * as moduleRepo from '../repositories/module.repository.js';
 import * as verificationRepo from '../repositories/verification.repository.js';
-import { NotFoundError, ValidationError, ForbiddenError } from '../errors/AppError.js';
+import { ConflictError, NotFoundError, ValidationError, ForbiddenError } from '../errors/AppError.js';
 import * as cryptoService from './crypto.service.js';
 import type { CertificatePayload } from '../types/index.js';
+import type { Prisma } from '@prisma/client';
 import type { VerificationMethod, VerificationResult } from '@prisma/client';
 
 /**
@@ -40,6 +41,18 @@ export async function issueCertificate(params: {
 
   if (!student || student.role !== 'student') {
     throw new NotFoundError('Étudiant', params.studentId);
+  }
+  if (student.institutionId !== params.institutionId) {
+    throw new ForbiddenError('Cet étudiant n’appartient pas à cette institution');
+  }
+
+  const activeCertificate = await certRepo.findFirst({
+    studentId: params.studentId,
+    institutionId: params.institutionId,
+    revokedAt: null,
+  });
+  if (activeCertificate) {
+    throw new ConflictError('Un certificat actif existe déjà pour cet étudiant');
   }
 
   // 2. Load active key pair for institution
@@ -81,7 +94,7 @@ export async function issueCertificate(params: {
     studentName: student.fullName,
     documentHash,
     digitalSignature,
-    canonicalData: payload,
+    canonicalData: payload as unknown as Prisma.InputJsonValue,
     status: 'signed',
     accessKey,
   });
@@ -105,25 +118,34 @@ export async function autoIssueIfReady(
   });
   if (existing) return null; // Already has one
 
-  // Get all active modules for the institution
   const allModules = await moduleRepo.findManyActive(institutionId);
-
-  if (allModules.length === 0) return null;
+  const requiredModules = allModules.filter(module => module.isRequired);
+  const modulesToComplete = requiredModules.length > 0 ? requiredModules : allModules;
+  if (modulesToComplete.length === 0) return null;
 
   // Get student's progress
   const modulesWithProgress = await moduleRepo.findWithUserModules(studentId, institutionId);
+  const requiredIds = new Set(modulesToComplete.map(module => module.id));
   const completedCount = modulesWithProgress.filter(
-    m => m.userModules.some(um => um.status === 'completed')
+    m => requiredIds.has(m.id) && m.userModules.some(um => um.status === 'completed')
   ).length;
 
-  // Check if all modules are completed
-  if (completedCount < allModules.length) return null;
+  if (completedCount < modulesToComplete.length) return null;
+
+  const requestedIssuer = await userRepo.findByIdFull(issuedBy);
+  const systemIssuer = requestedIssuer?.role === 'admin'
+    ? requestedIssuer
+    : await userRepo.findActiveAdminByInstitution(institutionId);
+
+  if (!systemIssuer) {
+    throw new ValidationError('Aucun administrateur actif disponible pour émettre le certificat');
+  }
 
   // All modules completed! Auto-issue certificate
   return issueCertificate({
     studentId,
     institutionId,
-    issuedBy,
+    issuedBy: systemIssuer.id,
     title: 'Architecture & Sécurité des Systèmes Numériques',
   });
 }
@@ -156,7 +178,7 @@ export async function downloadCertificate(uid: string, accessKey: string) {
   }
 
   // Return full certificate data (including signature info for PDF)
-  const { keyPair, ...rest } = certificate;
+  const { keyPair, accessKey: _accessKey, digitalSignature: _digitalSignature, ...rest } = certificate;
   return { ...rest, status: certificate.status === 'signed' ? 'delivered' : certificate.status };
 }
 
@@ -218,7 +240,7 @@ export async function verifyCertificate(
   }
 
   // 5. Re-compute hash from stored canonical data
-  const canonicalData = certificate.canonicalData as CertificatePayload;
+  const canonicalData = certificate.canonicalData as unknown as CertificatePayload;
   const canonicalJson = cryptoService.canonicalize(canonicalData);
   const recomputedHash = cryptoService.hashDocument(canonicalJson);
 
@@ -278,7 +300,8 @@ export async function listCertificates(filters?: {
   limit?: number;
   offset?: number;
 }) {
-  return certRepo.findMany(filters);
+  const certs = await certRepo.findMany(filters);
+  return certs.map(cert => sanitizeCert(cert));
 }
 
 /** Get a single certificate by ID */
@@ -292,10 +315,11 @@ export async function getCertificateById(id: string) {
 
 /** Remove sensitive fields before sending to client */
 function sanitizeCert(cert: Record<string, unknown>) {
-  const { keyPair, ...rest } = cert;
+  const { keyPair: _keyPair, accessKey: _accessKey, digitalSignature: _digitalSignature, ...rest } = cert;
   return {
     ...rest,
     keyPair: undefined,
+    accessKey: undefined,
     digitalSignature: undefined, // Don't expose raw signature to public
   };
 }
@@ -321,4 +345,3 @@ async function logVerification(
     console.error('[VERIFY-LOG] Failed to log verification:', err);
   }
 }
-

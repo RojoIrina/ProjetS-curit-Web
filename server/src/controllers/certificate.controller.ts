@@ -4,6 +4,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as certificateService from '../services/certificate.service.js';
 import * as cryptoService from '../services/crypto.service.js';
+import * as pdfService from '../services/pdf.service.js';
 import * as auditService from '../services/audit.service.js';
 import { env } from '../config/env.js';
 
@@ -35,9 +36,10 @@ export async function issue(req: Request, res: Response, next: NextFunction) {
       env.CORS_ORIGIN
     );
 
+    const { digitalSignature: _digitalSignature, ...certWithOneTimeKey } = cert;
     res.status(201).json({
       success: true,
-      data: { ...cert, qrPayload },
+      data: { ...certWithOneTimeKey, qrPayload },
     });
   } catch (err) {
     next(err);
@@ -81,7 +83,32 @@ export async function getById(req: Request, res: Response, next: NextFunction) {
       env.CORS_ORIGIN
     );
 
-    res.json({ success: true, data: { ...cert, qrPayload } });
+    const { accessKey: _accessKey, digitalSignature: _digitalSignature, ...safeCert } = cert;
+    res.json({ success: true, data: { ...safeCert, qrPayload } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function downloadPdf(req: Request, res: Response, next: NextFunction) {
+  try {
+    const cert = await certificateService.getCertificateById(req.params.id);
+
+    if (req.user!.role === 'student' && cert.studentId !== req.user!.id) {
+      res.status(403).json({ success: false, error: 'Accès interdit' });
+      return;
+    }
+
+    const qrPayload = cryptoService.generateSecureQRPayload(
+      cert.certificateUid,
+      env.CORS_ORIGIN
+    );
+    const pdf = await pdfService.generateCertificatePdf({ ...cert, qrPayload });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="certificat-${cert.certificateUid}.pdf"`);
+    res.setHeader('X-CertiVerify-PDF-SHA256', pdf.sha256);
+    res.send(pdf.buffer);
   } catch (err) {
     next(err);
   }
@@ -123,6 +150,32 @@ export async function download(req: Request, res: Response, next: NextFunction) 
 
     const cert = await certificateService.downloadCertificate(uid.toUpperCase(), key);
     res.json({ success: true, data: cert });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function downloadPublicPdf(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { uid } = req.params;
+    const { key } = req.query as Record<string, string>;
+
+    if (!key) {
+      res.status(400).json({ success: false, error: 'Clé d\'accès requise (paramètre ?key=...)' });
+      return;
+    }
+
+    const cert = await certificateService.downloadCertificate(uid.toUpperCase(), key);
+    const qrPayload = cryptoService.generateSecureQRPayload(
+      cert.certificateUid,
+      env.CORS_ORIGIN
+    );
+    const pdf = await pdfService.generateCertificatePdf({ ...cert, qrPayload });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="certificat-${cert.certificateUid}.pdf"`);
+    res.setHeader('X-CertiVerify-PDF-SHA256', pdf.sha256);
+    res.send(pdf.buffer);
   } catch (err) {
     next(err);
   }

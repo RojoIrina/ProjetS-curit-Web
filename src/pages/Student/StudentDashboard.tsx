@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 
 export default function StudentDashboard() {
-  const { currentUser, modules, toggleModuleCompletion, issueCertificate, certificates, moduleProgress, refreshProgress } = useStore();
+  const { currentUser, modules, enrollInModule, completeModule, issueCertificate, certificates, moduleProgress, refreshProgress, refreshCertificates } = useStore();
   const navigate = useNavigate();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [accessKeyModal, setAccessKeyModal] = useState<string | null>(null);
@@ -21,9 +21,14 @@ export default function StudentDashboard() {
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  // Use moduleProgress from API if available, fallback to modules + completedModules
-  const completedModules = currentUser.completedModules ?? [];
-  const allCompleted = modules.length > 0 && modules.every(m => completedModules.includes(m.id));
+  const progressById = new Map<string, typeof moduleProgress[number]>(
+    moduleProgress.map(progress => [progress.id, progress])
+  );
+  const requiredModules = modules.filter(m => m.isRequired);
+  const certificationModules = requiredModules.length > 0 ? requiredModules : modules;
+  const completedModules = moduleProgress.filter(progress => progress.status === 'completed').map(progress => progress.id);
+  const completedRequiredCount = certificationModules.filter(m => progressById.get(m.id)?.status === 'completed').length;
+  const allCompleted = certificationModules.length > 0 && completedRequiredCount === certificationModules.length;
   const existingCert = certificates.find(c => c.studentId === currentUser.id);
 
   const handleUnlock = async () => {
@@ -38,7 +43,7 @@ export default function StudentDashboard() {
             origin: { y: 0.6 },
             colors: ['#6366f1', '#a855f7', '#10b981']
           });
-          // Show access key modal
+          refreshCertificates();
           if (newCert.accessKey) {
             setAccessKeyModal(newCert.accessKey);
           } else {
@@ -162,22 +167,39 @@ export default function StudentDashboard() {
               Modules de formation
             </h2>
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-              {completedModules.length} / {modules.length} Complétés
+              {completedRequiredCount} / {certificationModules.length} Requis complétés
             </span>
           </div>
 
           <div className="space-y-4">
             {modules.map((module, i) => {
-              const isCompleted = completedModules.includes(module.id);
+              const progress = progressById.get(module.id);
+              const status = progress?.status ?? 'not_enrolled';
+              const isCompleted = status === 'completed';
+              const canComplete = status === 'enrolled' || status === 'in_progress';
               return (
                 <motion.div
                   key={module.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.1 }}
-                  onClick={() => {
-                    toggleModuleCompletion(currentUser.id, module.id);
-                    showFeedback(isCompleted ? 'Module retiré' : 'Module complété !');
+                  onClick={async () => {
+                    if (isCompleted) {
+                      showFeedback('Cours déjà validé côté serveur');
+                      return;
+                    }
+                    if (status === 'not_enrolled') {
+                      await enrollInModule(module.id);
+                      await refreshProgress();
+                      showFeedback('Inscription au cours enregistrée');
+                      return;
+                    }
+                    if (canComplete) {
+                      await completeModule(module.id);
+                      await refreshProgress();
+                      await refreshCertificates();
+                      showFeedback('Cours validé côté serveur');
+                    }
                   }}
                   className={`p-6 bg-white border rounded-3xl flex items-center justify-between cursor-pointer transition-all hover:scale-[1.01] shadow-sm ${isCompleted ? 'border-emerald-200' : 'border-slate-200 hover:border-indigo-300'}`}
                 >
@@ -190,6 +212,14 @@ export default function StudentDashboard() {
                         {module.title}
                       </p>
                       <p className="text-xs text-slate-500 font-medium">{module.description}</p>
+                      {module.content && (
+                        <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-line max-w-2xl">{module.content}</p>
+                      )}
+                      <div className="flex gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        <span>{module.isRequired ? 'Requis' : 'Optionnel'}</span>
+                        {module.duration > 0 && <span>{module.duration} min</span>}
+                        <span>{status === 'not_enrolled' ? 'Cliquer pour s’inscrire' : status}</span>
+                      </div>
                     </div>
                   </div>
                   <Clock className="w-4 h-4 text-slate-200" />
@@ -215,7 +245,7 @@ export default function StudentDashboard() {
               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden mb-3">
                 <motion.div 
                   initial={{ width: 0 }}
-                  animate={{ width: modules.length > 0 ? `${(completedModules.length / modules.length) * 100}%` : '0%' }}
+                  animate={{ width: certificationModules.length > 0 ? `${(completedRequiredCount / certificationModules.length) * 100}%` : '0%' }}
                   className="h-full bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.5)]"
                 />
               </div>
